@@ -1,0 +1,5 @@
+Test loss: 0.47901552670774955
+Test accuracy : 0.7671532883013069
+Test dice score : 0.7678148835755265
+Test auc : 0.8370882139688606
+Slightly worse than model_2019_08_30

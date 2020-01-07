@@ -35,9 +35,11 @@ import math
 import random
 from tqdm import tqdm_notebook as tqdm 
 
+
+
 class DualPatchExtractor():
     def __init__(self,map1_dir,map2_dir,mask_dir,map1_patch_dir,map2_patch_dir\
-    ,mask_patch_dir,overlap=False,progress_bar=True):
+    ,mask_patch_dir,gray=True,overlap=False,progress_bar=True):
     
         
         self.map1_dir=map1_dir
@@ -47,7 +49,8 @@ class DualPatchExtractor():
         self.map1_patch_dir=map1_patch_dir
         self.map2_patch_dir=map2_patch_dir
         self.mask_patch_dir=mask_patch_dir
-     
+        
+        self.gray=gray
         self.overlap=overlap
         self.progress_bar=progress_bar
         
@@ -107,7 +110,7 @@ class DualPatchExtractor():
                 mask_img=mask_img.astype(np.uint8)*255
 
 
-                r,c,_=map1_img.shape
+                r,c=map1_img.shape[:2]
 
                 new_r_count=(math.ceil((r-512)/512)+1)
                 new_c_count=(math.ceil((c-512)/512)+1)
@@ -118,20 +121,31 @@ class DualPatchExtractor():
                 pad_c1=((new_c_count-1)*512-c+512)//2 
                 pad_c2=((new_c_count-1)*512-c+512)-pad_c1 
 
-                map1_padded=np.pad(map1_img, [(pad_r1,pad_r2),(pad_c1,pad_c2),(0,0)], 'constant', constant_values=0)
-                map2_padded=np.pad(map2_img, [(pad_r1,pad_r2),(pad_c1,pad_c2),(0,0)], 'constant', constant_values=0)#/np.amax(input_image)
+                if self.gray:
+                    map1_padded=np.pad(map1_img, [(pad_r1,pad_r2),(pad_c1,pad_c2)], 'constant', constant_values=0)
+                    map2_padded=np.pad(map2_img, [(pad_r1,pad_r2),(pad_c1,pad_c2)], 'constant', constant_values=0)
+                    window_shape=(512,512)
+                else:
+                    map1_padded=np.pad(map1_img, [(pad_r1,pad_r2),(pad_c1,pad_c2),(0,0)], 'constant', constant_values=0)
+                    map2_padded=np.pad(map2_img, [(pad_r1,pad_r2),(pad_c1,pad_c2),(0,0)], 'constant', constant_values=0)#/np.amax(input_image)
+                    window_shape=(512,512,3)
                 mask_padded=np.pad(mask_img, [(pad_r1,pad_r2),(pad_c1,pad_c2)], 'constant', constant_values=0)
 
-                window_shape=(512,512,3)
+
                 window_shape_mask=(512,512)
 
                 map1_patches=skimage.util.view_as_windows(map1_padded, window_shape, step=step)
-                map1_patches=map1_patches.reshape((-1,512,512,3))
-
                 map2_patches=skimage.util.view_as_windows(map2_padded, window_shape, step=step)
-                map2_patches=map2_patches.reshape((-1,512,512,3))
-
                 mask_patches=skimage.util.view_as_windows(mask_padded, window_shape_mask, step=step)
+
+                if self.gray:
+                    map1_patches=map1_patches.reshape((-1,512,512))
+                    map2_patches=map2_patches.reshape((-1,512,512))
+                else:
+                    map1_patches=map1_patches.reshape((-1,512,512,3))
+                    map2_patches=map2_patches.reshape((-1,512,512,3))
+
+
                 mask_patches=mask_patches.reshape((-1,512,512))
 
 

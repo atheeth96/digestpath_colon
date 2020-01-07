@@ -24,12 +24,13 @@ def Sort_Tuple(tup):
 class DataSet(Dataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, map1_dir, map2_dir,mask_dir, transform=None):
+    def __init__(self, map1_dir, map2_dir,mask_dir,gray=True, transform=None):
         
         self.map1_dir=map1_dir
         self.map2_dir=map2_dir
         self.mask_dir = mask_dir
-     
+        
+        self.gray=gray
         self.transform = transform
         self.img_list=os.listdir(map1_dir)
         
@@ -53,6 +54,10 @@ class DataSet(Dataset):
         
         map_1_image = imread(map_1_name)
         map_2_image = imread(map_2_name)
+        if self.gray:
+            map_1_image = np.expand_dims(map_1_image,axis=2)
+            map_2_image = np.expand_dims(map_2_image,axis=2)
+        
         mask_image=np.expand_dims(imread(mask_name),axis=2)
         
         sample = {'map1': map_1_image, 'map2': map_2_image,'mask':mask_image}
@@ -63,7 +68,7 @@ class DataSet(Dataset):
         return sample
 class Scale(object):
     """Convert ndarrays in sample to Tensors."""
- 
+  
 
     def __call__(self,sample):
         map1, map2,mask = sample['map1'], sample['map2'],sample['mask']
@@ -80,7 +85,7 @@ class Scale(object):
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
-
+  
     def __call__(self, sample):
         map1, map2,mask = sample['map1'], sample['map2'],sample['mask']
         
@@ -88,9 +93,13 @@ class ToTensor(object):
         # swap color axis because
         # numpy image: H x W x C
         # torch image: C X H X W
+        
+        
+        
         map1 = map1.transpose((2, 0, 1))
         map2 = map2.transpose((2, 0, 1))
         mask = mask.transpose((2, 0, 1))
+        
         return {'map1': torch.from_numpy(map1).type(torch.FloatTensor),
                 'map2': torch.from_numpy(map2).float(),
                'mask': torch.from_numpy(mask).float()}

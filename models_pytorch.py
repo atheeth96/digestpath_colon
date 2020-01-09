@@ -27,6 +27,31 @@ def init_weights(net, init_type='normal', gain=0.02):
 
     print('initialized network with {} initialization'.format(init_type))
     net.apply(init_func)
+    
+    
+def save_model(model,optimizer,name,scheduler=None):
+    if scheduler==None:
+        checkpoint = {
+        'state_dict': model.state_dict(),
+        'optimizer' : optimizer.state_dict()}
+    else:
+        checkpoint = {
+        'state_dict': model.state_dict(),
+        'optimizer' : optimizer.state_dict(),
+        'scheduler' : scheduler.state_dict()}
+
+    torch.save(checkpoint,name)
+
+def load_model(filename,model,optimizer=None,scheduler=None):
+    checkpoint=torch.load(filename)
+    model.load_state_dict(checkpoint['state_dict'])
+    print("Done loading")
+    if  optimizer:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print(optimizer.state_dict()['param_groups'][-1]['lr'],' : Learning rate')
+    if  scheduler:
+        scheduler.load_state_dict(checkpoint['optimizer'])
+        print(scheduler.state_dict()['param_groups'][-1]['lr'],' : Learning rate')
 
 
 class conv_block(nn.Module):
@@ -92,6 +117,51 @@ class Attention_block(nn.Module):
 
         return x*psi
 
+    
+    
+class ASM(nn.Module):
+    def __init__(self,F_ip,F_int):
+        super().__init__()
+#         self.GlobalPool = nn.AvgPool2d(kernel_size=2,stride=2)
+        self.W_1x1 = nn.Conv2d(F_ip, F_int, kernel_size=1,stride=1,padding=0,bias=True)
+        self.batch_norm=nn.BatchNorm2d(F_int)
+      
+
+    def forward(self,map_1_fm,map_2_fm):
+        x=torch.cat((map_1_fm,map_2_fm),dim=1)
+#         psi=self.GlobalPool(x)
+        psi=self.W_1x1(x)
+        psi=torch.sigmoid(psi)
+        psi=self.batch_norm(psi)
+
+        return x*psi
+    
+    
+class FFM(nn.Module):
+    
+    def __init__(self,F_int):
+        super().__init__()
+        self.W_x = nn.Sequential(
+        nn.Conv2d(F_int, F_int, kernel_size=3,stride=1,padding=1,bias=True),
+        nn.BatchNorm2d(F_int),
+        nn.ReLU(inplace=True)
+        )
+        self.GlobalPool = nn.AvgPool2d(kernel_size=2,stride=2)
+        self.W_1x1 = nn.Conv2d(F_int, F_int, kernel_size=1,stride=1,padding=0,bias=True)
+        self.batch_norm=nn.BatchNorm2d(F_int)
+      
+
+    def forward(self,map_1_fm,map_2_fm):
+        x=torch.cat((map_1_fm,map_2_fm),dim=1)
+        x=self.W_x(x)
+        psi=self.GlobalPool(x)
+        psi=self.W_1x1(psi)
+        psi=torch.sigmoid(psi)
+        x1=x*psi
+
+        return x1+x
+    
+    
 class DualEncoding_U_Net(nn.Module):
     def __init__(self,img_ch=3,output_ch=1):
         super().__init__()
@@ -103,42 +173,41 @@ class DualEncoding_U_Net(nn.Module):
         self.Conv3_encoding_1 = conv_block(ch_in=128,ch_out=256)
         self.Conv4_encoding_1 = conv_block(ch_in=256,ch_out=512)
         
+        
+        
         self.Conv1_encoding_2 = conv_block(ch_in=img_ch,ch_out=64)
         self.Conv2_encoding_2 = conv_block(ch_in=64,ch_out=128)
         self.Conv3_encoding_2 = conv_block(ch_in=128,ch_out=256)
         self.Conv4_encoding_2 = conv_block(ch_in=256,ch_out=512)
         
-        self.Conv1=nn.Sequential(
-        nn.Conv2d(128, 64, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(64)
-        )
+        self.ffm=FFM(1024)
         
-        self.Conv2=nn.Sequential(
-        nn.Conv2d(256, 128, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(128)
-        )
-        self.Conv3=nn.Sequential(
-        nn.Conv2d(512, 256, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(256)
-        )
-        self.Conv4=nn.Sequential(
-        nn.Conv2d(1024, 512, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(512)
-        )
-        #self.Conv5 = conv_block(ch_in=512,ch_out=1024)
+        self.asm4=ASM(128,64)
+        self.asm3=ASM(256,128)
+        self.asm2=ASM(512,256)
+        self.asm1=ASM(1024,512)
+      
         self.dropout=nn.Dropout(0.45)
 
         self.Up5 = up_conv(ch_in=1024,ch_out=512)
-        self.Up_conv5 = conv_block(ch_in=1024, ch_out=512)
+        self.Up_conv5 = nn.Sequential(nn.Conv2d(1024,512,kernel_size=1,stride=1,padding=1,bias=True),
+                                      nn.BatchNorm2d(512),
+                                      nn.ReLU(inplace=True))
 
         self.Up4 = up_conv(ch_in=512,ch_out=256)
-        self.Up_conv4 = conv_block(ch_in=512, ch_out=256)
+        self.Up_conv4 = nn.Sequential(nn.Conv2d(512,256,kernel_size=1,stride=1,padding=0,bias=True),
+                                      nn.BatchNorm2d(256),
+                                      nn.ReLU(inplace=True))
 
         self.Up3 = up_conv(ch_in=256,ch_out=128)
-        self.Up_conv3 = conv_block(ch_in=256, ch_out=128)
+        self.Up_conv3 = nn.Sequential(nn.Conv2d(256,128,kernel_size=1,stride=1,padding=0,bias=True),
+                                      nn.BatchNorm2d(128),
+                                      nn.ReLU(inplace=True))
 
         self.Up2 = up_conv(ch_in=128,ch_out=64)
-        self.Up_conv2 = conv_block(ch_in=128, ch_out=64)
+        self.Up_conv2 = nn.Sequential(nn.Conv2d(128,64,kernel_size=1,stride=1,padding=0,bias=True),
+                                      nn.BatchNorm2d(64),
+                                      nn.ReLU(inplace=True))
 
         self.Conv_1x1 = nn.Conv2d(64,output_ch,kernel_size=1,stride=1,padding=0)
 
@@ -146,61 +215,79 @@ class DualEncoding_U_Net(nn.Module):
     def forward(self,x_h,x_e):
         # encoding path
         x_h1 = self.Conv1_encoding_1(x_h)
+        # N*64*512*512
 
         x_h2 = self.Maxpool(x_h1)
         x_h2 = self.Conv2_encoding_1(x_h2)
+        # N*128*256*256
 
         x_h3 = self.Maxpool(x_h2)
         x_h3 = self.Conv3_encoding_1(x_h3)
+        # N*256*128*128
 
         x_h4 = self.Maxpool(x_h3)
         x_h4 = self.Conv4_encoding_1(x_h4)
-        #x_h4=self.dropout(x_h4)
+        # N*512*64*64
         
         x_e1 = self.Conv1_encoding_2(x_e)
+        # N*64*512*512
 
         x_e2 = self.Maxpool(x_e1)
         x_e2 = self.Conv2_encoding_2(x_e2)
+        # N*128*256*256
 
         x_e3 = self.Maxpool(x_e2)
         x_e3 = self.Conv3_encoding_2(x_e3)
+        # N*256*128*128
 
         x_e4 = self.Maxpool(x_e3)
         x_e4 = self.Conv4_encoding_2(x_e4)
-        #x_e4=self.dropout(x_e4)
+        # N*512*64*64
+    
+        x5=self.ffm(x_h4,x_e4)
+        # N*1024*32*32
         
-        x5=torch.cat((x_h4,x_e4),dim=1)
-
-        x5 = self.Maxpool(x5)
-        #x5 = self.Conv5(x5)
-
         # decoding + concat path
+        
         d5 = self.Up5(x5)
-        x4=torch.cat((x_h4,x_e4),dim=1)
-        x4=self.Conv4(x4)
+        # N*512*64*64
+        x4=self.asm1(x_h4,x_e4)
+        # N*512*64*64
         d5 = torch.cat((x4,d5),dim=1)
-
+        # N*1024*64*64
         d5 = self.Up_conv5(d5)
+        # N*512*64*64
 
         d4 = self.Up4(d5)
-        x3=torch.cat((x_h3,x_e3),dim=1)
-        x3=self.Conv3(x3)
+        # N*256*128*128
+        x3=self.asm2(x_h3,x_e3)
+        # N*256*128*128
         d4 = torch.cat((x3,d4),dim=1)
+        # N*512*128*128
         d4 = self.Up_conv4(d4)
+        # N*256*128*128
 
         d3 = self.Up3(d4)
-        x2=torch.cat((x_h2,x_e2),dim=1)
-        x2=self.Conv2(x2)
+        # N*128*256*256
+        x2=self.asm3(x_h2,x_e2)
+        # N*128*256*256
+        
         d3 = torch.cat((x2,d3),dim=1)
+        # N*256*256*256
         d3 = self.Up_conv3(d3)
+        # N*128*256*256
 
         d2 = self.Up2(d3)
-        x1=torch.cat((x_h1,x_e1),dim=1)
-        x1=self.Conv1(x1)
+        # N*64*512*512
+        x1=self.asm4(x_h1,x_e1)
+        # N*64*512*512
         d2 = torch.cat((x1,d2),dim=1)
+        # N*128*512*512
         d2 = self.Up_conv2(d2)
+        # N*64*512*512
 
         d1 = self.Conv_1x1(d2)
+        # N*1*512*512
 
         return d1
 

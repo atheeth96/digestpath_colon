@@ -150,7 +150,7 @@ class DualPatchExtractor():
 
 
                 for i,(map1_patch,map2_patch,mask_patch) in enumerate(zip(map1_patches,map2_patches,mask_patches)):
-                    if len(np.where(mask_patch==255)[0])>=5000:
+                    if len(np.where(mask_patch==255)[0])>=3000:
                         NO_PATCHES+=1
 
 

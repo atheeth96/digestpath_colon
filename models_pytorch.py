@@ -41,6 +41,7 @@ def save_model(model,optimizer,name,scheduler=None):
         'scheduler' : scheduler.state_dict()}
 
     torch.save(checkpoint,name)
+    
 
 def load_model(filename,model,optimizer=None,scheduler=None):
     checkpoint=torch.load(filename)
@@ -52,8 +53,8 @@ def load_model(filename,model,optimizer=None,scheduler=None):
     if  scheduler:
         scheduler.load_state_dict(checkpoint['optimizer'])
         print(scheduler.state_dict()['param_groups'][-1]['lr'],' : Learning rate')
-
-
+        
+        
 class conv_block(nn.Module):
     def __init__(self,ch_in,ch_out):
         super().__init__()
@@ -88,36 +89,6 @@ class up_conv(nn.Module):
 
 
 
-class Attention_block(nn.Module):
-    def __init__(self,F_g,F_l,F_int):
-        super().__init__()
-        self.W_g = nn.Sequential(
-        nn.Conv2d(F_g, F_int, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(F_int)
-        )
-
-        self.W_x = nn.Sequential(
-        nn.Conv2d(F_l, F_int, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(F_int)
-        )
-
-        self.psi = nn.Sequential(
-        nn.Conv2d(F_int, 1, kernel_size=1,stride=1,padding=0,bias=True),
-        nn.BatchNorm2d(1),
-        nn.Sigmoid()
-        )
-
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self,g,x):
-        g1 = self.W_g(g)
-        x1 = self.W_x(x)
-        psi = self.relu(g1+x1)
-        psi = self.psi(psi)
-
-        return x*psi
-
-    
     
 class ASM(nn.Module):
     def __init__(self,F_ip,F_int):
@@ -128,13 +99,15 @@ class ASM(nn.Module):
       
 
     def forward(self,map_1_fm,map_2_fm):
+        
         x=torch.cat((map_1_fm,map_2_fm),dim=1)
 #         psi=self.GlobalPool(x)
-        psi=self.W_1x1(x)
-        psi=torch.sigmoid(psi)
+        x1=self.W_1x1(x)
+        psi=torch.sigmoid(x1)
         psi=self.batch_norm(psi)
+        
 
-        return x*psi
+        return x1*psi
     
     
 class FFM(nn.Module):
@@ -152,12 +125,15 @@ class FFM(nn.Module):
       
 
     def forward(self,map_1_fm,map_2_fm):
+        
         x=torch.cat((map_1_fm,map_2_fm),dim=1)
         x=self.W_x(x)
-        psi=self.GlobalPool(x)
-        psi=self.W_1x1(psi)
+        x=self.GlobalPool(x)
+        psi=self.W_1x1(x)
         psi=torch.sigmoid(psi)
+        
         x1=x*psi
+        
 
         return x1+x
     
@@ -190,7 +166,7 @@ class DualEncoding_U_Net(nn.Module):
         self.dropout=nn.Dropout(0.45)
 
         self.Up5 = up_conv(ch_in=1024,ch_out=512)
-        self.Up_conv5 = nn.Sequential(nn.Conv2d(1024,512,kernel_size=1,stride=1,padding=1,bias=True),
+        self.Up_conv5 = nn.Sequential(nn.Conv2d(1024,512,kernel_size=1,stride=1,padding=0,bias=True),
                                       nn.BatchNorm2d(512),
                                       nn.ReLU(inplace=True))
 
@@ -246,18 +222,20 @@ class DualEncoding_U_Net(nn.Module):
     
         x5=self.ffm(x_h4,x_e4)
         # N*1024*32*32
+      
         
         # decoding + concat path
         
         d5 = self.Up5(x5)
         # N*512*64*64
+        
         x4=self.asm1(x_h4,x_e4)
+       
         # N*512*64*64
         d5 = torch.cat((x4,d5),dim=1)
         # N*1024*64*64
         d5 = self.Up_conv5(d5)
         # N*512*64*64
-
         d4 = self.Up4(d5)
         # N*256*128*128
         x3=self.asm2(x_h3,x_e3)
@@ -291,12 +269,43 @@ class DualEncoding_U_Net(nn.Module):
 
         return d1
 
+    
+
+class Attention_block(nn.Module):
+    def __init__(self,F_g,F_l,F_int):
+        super().__init__()
+        self.W_g = nn.Sequential(
+        nn.Conv2d(F_g, F_int, kernel_size=1,stride=1,padding=0,bias=True),
+        nn.BatchNorm2d(F_int)
+        )
+
+        self.W_x = nn.Sequential(
+        nn.Conv2d(F_l, F_int, kernel_size=1,stride=1,padding=0,bias=True),
+        nn.BatchNorm2d(F_int)
+        )
+
+        self.psi = nn.Sequential(
+        nn.Conv2d(F_int, 1, kernel_size=1,stride=1,padding=0,bias=True),
+        nn.BatchNorm2d(1),
+        nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self,g,x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1+x1)
+        psi = self.psi(psi)
+
+        return x*psi
+
 class AttnUNet(nn.Module):
-    def __init__(self,img_ch=1,output_ch=1):
+    def __init__(self,img_ch=1,output_ch=1,dropout=0.45):
         super().__init__()
 
         self.Maxpool = nn.MaxPool2d(kernel_size=2,stride=2)
-        self.dropout=torch.nn.Dropout(0.45)
+        self.dropout=torch.nn.Dropout(dropout)
 
         self.Conv1 = conv_block(ch_in=img_ch,ch_out=64)
         self.Conv2 = conv_block(ch_in=64,ch_out=128)
@@ -364,6 +373,6 @@ class AttnUNet(nn.Module):
         d1 = self.Conv_1x1(d2)
 
         return d1
-    
+
     
 

@@ -17,6 +17,11 @@ app/__pycache__/
 *.sql
 *.sqlite
 
+
+#folders
+*model*
+*map*
+
 # OS generated files #
 ######################
 .DS_Store

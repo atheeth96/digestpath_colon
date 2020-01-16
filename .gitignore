@@ -5,6 +5,7 @@
 *.xlsx
 *.xls
 *.tar
+ritBan_task2.tar
 #other
 *__pycache*
 *.pyc

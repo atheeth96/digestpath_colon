@@ -144,10 +144,11 @@ class DualEncoding_U_Net(nn.Module):
 
         self.Maxpool = nn.MaxPool2d(kernel_size=2,stride=2)
 
-        self.Conv1_encoding_1 = conv_block(ch_in=img_ch,ch_out=64)
+        self.Conv1_encoding_1 = conv_block(ch_in=3,ch_out=64)
         self.Conv2_encoding_1 = conv_block(ch_in=64,ch_out=128)
         self.Conv3_encoding_1 = conv_block(ch_in=128,ch_out=256)
         self.Conv4_encoding_1 = conv_block(ch_in=256,ch_out=512)
+        self.Conv5_encoding_1 = conv_block(ch_in=512,ch_out=1024)
         
         
         
@@ -156,7 +157,7 @@ class DualEncoding_U_Net(nn.Module):
         self.Conv3_encoding_2 = conv_block(ch_in=128,ch_out=256)
         self.Conv4_encoding_2 = conv_block(ch_in=256,ch_out=512)
         
-        self.ffm=FFM(1024)
+#         self.ffm=FFM(1024)
         
         self.asm4=ASM(128,64)
         self.asm3=ASM(256,128)
@@ -214,28 +215,30 @@ class DualEncoding_U_Net(nn.Module):
 
         x_e3 = self.Maxpool(x_e2)
         x_e3 = self.Conv3_encoding_2(x_e3)
+    
         # N*256*128*128
 
         x_e4 = self.Maxpool(x_e3)
         x_e4 = self.Conv4_encoding_2(x_e4)
         # N*512*64*64
     
-        x5=self.ffm(x_h4,x_e4)
+        lat_spc=self.Conv5_encoding_1(x_h4)
+        lat_spc=self.Maxpool(lat_spc)
         # N*1024*32*32
       
         
         # decoding + concat path
         
-        d5 = self.Up5(x5)
+        d5 = self.Up5(lat_spc)
         # N*512*64*64
         
         x4=self.asm1(x_h4,x_e4)
-       
         # N*512*64*64
+        
         d5 = torch.cat((x4,d5),dim=1)
         # N*1024*64*64
-        d5 = self.Up_conv5(d5)
-        # N*512*64*64
+        d5=self.Up_conv5(d5)
+        
         d4 = self.Up4(d5)
         # N*256*128*128
         x3=self.asm2(x_h3,x_e3)
@@ -269,7 +272,6 @@ class DualEncoding_U_Net(nn.Module):
 
         return d1
 
-    
 
 class Attention_block(nn.Module):
     def __init__(self,F_g,F_l,F_int):

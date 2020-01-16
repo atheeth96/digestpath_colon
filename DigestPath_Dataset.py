@@ -55,7 +55,7 @@ class DataSet(Dataset):
         map_1_image = imread(map_1_name)
         map_2_image = imread(map_2_name)
         if self.gray:
-            map_1_image = np.expand_dims(map_1_image,axis=2)
+            #map_1_image = np.expand_dims(map_1_image,axis=2)
             map_2_image = np.expand_dims(map_2_image,axis=2)
         
         mask_image=np.expand_dims(imread(mask_name),axis=2)
@@ -95,14 +95,14 @@ class ToTensor(object):
         # torch image: C X H X W
         
         
-        
+       
         map1 = map1.transpose((2, 0, 1))
         map2 = map2.transpose((2, 0, 1))
         mask = mask.transpose((2, 0, 1))
         
         return {'map1': torch.from_numpy(map1).type(torch.FloatTensor),
-                'map2': torch.from_numpy(map2).float(),
-               'mask': torch.from_numpy(mask).float()}
+                'map2': torch.from_numpy(map2).type(torch.FloatTensor),
+               'mask': torch.from_numpy(mask).type(torch.FloatTensor)}
     
 
 

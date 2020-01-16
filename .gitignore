@@ -21,7 +21,8 @@ app/__pycache__/
 #folders
 *model*
 *map*
-
+*mask*
+*patches*
 # OS generated files #
 ######################
 .DS_Store
